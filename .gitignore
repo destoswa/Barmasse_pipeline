@@ -1,1 +1,5 @@
 data/*
+dist/*
+build/*
+demo/*
+*.spec

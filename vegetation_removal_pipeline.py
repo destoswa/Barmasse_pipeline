@@ -145,60 +145,6 @@ def tilling(src_input, src_target, tile_size, overlap=0, shift=0, verbose=True):
         tile.write(tile_filename)
 
 
-# def stripes_file(src_input_file, src_output, dims, do_keep_existing=False, verbose=True):
-#     [tile_size_x, tile_size_y] = dims
-#     laz = laspy.read(src_input_file)
-#     os.makedirs(src_output, exist_ok=True)
-
-#     xmin, xmax, ymin, ymax = np.min(laz.x), np.max(laz.x), np.min(laz.y), np.max(laz.y)
-
-#     x_edges = np.arange(xmin, xmax, tile_size_x)
-#     y_edges = np.arange(ymin, ymax, tile_size_y)
-
-#     if verbose:
-#         print("Computing the bounds...")
-
-#     list_bounds = []
-#     combinations = list(itertools.product(x_edges, y_edges))
-#     for (x0, y0) in combinations:
-#     # for i, x0 in enumerate(x_edges):
-#     #     for j, y0 in tqdm(enumerate(y_edges), total=len(y_edges)):
-#         x1 = x0 + tile_size_x
-#         y1 = y0 + tile_size_y
-#         bounds = f"([{x0},{x1}],[{y0},{y1}])"
-        
-#         list_bounds.append(bounds)
-
-#     output_pattern = os.path.join(
-#             src_output, 
-#             os.path.basename(src_input_file).split('.')[0] + "_stripe_#.laz",
-#             )
-#     pipeline_json = {
-#         "pipeline": [
-#             {
-#                 "type": "readers.las",
-#                 "filename": src_input_file,
-#                 "spatialreference": "EPSG:2056",
-#                 "extra_dims": "id_point=uint32"
-#             },
-#             {
-#                 "type": "filters.crop", 
-#                 "bounds": list_bounds,
-#             },
-#             {
-#                 "type": "writers.las", 
-#                 "filename": output_pattern, 
-#                 'extra_dims': "id_point=uint32"
-#             }
-#         ]
-#     }
-#     if verbose:
-#         print("Creation of the stripes (might take a few minutes)")
-#     pipeline = pdal.Pipeline(json.dumps(pipeline_json))
-#     pipeline.execute()
-#     if verbose:
-#         print("Process done")
-
 def stripes_file(src_input_file, src_output, dims, do_keep_existing=False, verbose=True):
     """
     Crops a LAS/LAZ file into tiles using laspy directly (preserves id_point and coordinates).
