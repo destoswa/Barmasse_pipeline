@@ -7,7 +7,10 @@ from tqdm import tqdm
 from time import time
 from omegaconf import OmegaConf
 from format_conversions import convert_all_in_folder
-from utils import *
+# from utils import *
+from utils_multi_proc import *
+from playsound import playsound
+
 
 def main(args):
     """
@@ -37,6 +40,7 @@ def main(args):
     OUTPUT_TYPE = args.output_type
     DO_SKIP_EXISTING_FLATTEN = args.do_skip_existing_flatten
     SKIP_TO_STEP = int(args.skip_to_step)
+    NUM_WORKERS = int(args.num_workers)
 
     # prepare paths
     src_preprocess_dir = os.path.join(os.path.dirname(SRC_INPUT), 'preprocessing_files')
@@ -57,6 +61,7 @@ def main(args):
             src_input=SRC_INPUT, 
             src_target=src_folder_tiles_wo_overlap, 
             tile_size=TILE_SIZE,
+            n_processes=NUM_WORKERS,
             overlap=0)
     
     # 2 - splitting as tiles w overlap
@@ -66,6 +71,7 @@ def main(args):
             src_input=SRC_INPUT, 
             src_target=src_folder_tiles_w_overlap, 
             tile_size=TILE_SIZE,
+            n_processes=NUM_WORKERS,
             overlap=OVERLAP)
     
 	# 3 - flattening of tiles w overlap
@@ -79,6 +85,7 @@ def main(args):
             method=METHOD,
             epsilon=METHOD_EPSILON,
             do_skip_existing=DO_SKIP_EXISTING_FLATTEN,
+            n_processes=NUM_WORKERS,
             verbose=True,
             verbose_full=False,
         )
@@ -122,7 +129,6 @@ def main(args):
         list_floor_to_merge = []
         list_tiles = [x for x in os.listdir(src_folder_tiles_wo_overlap) if x.endswith('.laz')]
         for _, tile in tqdm(enumerate(list_tiles), total=len(list_tiles), desc="Processing"):
-            # print(tile)
             assert os.path.exists(os.path.join(src_folder_tiles_wo_overlap, tile))
             try:
                 laz_with_ov = laspy.read(os.path.join(src_folder_flatten_tiles, tile))
@@ -253,5 +259,8 @@ if __name__ == "__main__":
         "The offsets were saved in the file data/offsets.txt and will automatically be loaded by the postprocess.")
         print(f"\tThe precision detected and used is {precision} decimals. It is important that the " \
         'clean files given to postprocess have the same precision. ')
-
+    
+    for i in range(3):
+        playsound('./robot.mp3')
+    
     input("Press enter to continue...")
