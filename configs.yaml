@@ -1,5 +1,5 @@
 preprocessing:
-  src_point_cloud: D:\GitHubProjects\Terranum_repo\Barmasse_pipeline\demo\data\Barmasse_2025_AllScans_Raw_Sub2cm_aligned_tile_6_8_small.laz
+  src_point_cloud: D:\GitHubProjects\Terranum_repo\Barmasse_pipeline\demo\data\Barmasse_2025_AllScans_Raw_Sub2cm_with_id_tile_7_4_small.laz
   tile_size:  20
   overlap: 10
   grid_size: 10
@@ -8,15 +8,12 @@ preprocessing:
   method: multiquadric
   method_epsilon: 0.2
   output_type: txt  # choose between las, laz and txt
-  output_txt_offset: [2586435, 1098142, 0]
-  do_skip_existing_flatten: True
-  skip_to_step: 11
+  do_skip_existing_flatten: False
+  skip_to_step: 0
 postprocessing:
   src_clean_stripes: default # keep "default" if you didn't saved the clean stripes over the flatten stripes
   src_floor_stripes: default   # keep "default" if you didn't change the location of the floors compiled during preprocessing
   src_original_stripes: default   # keep "default" if you didn't change the location of the floors compiled during preprocessing
   src_resulting_file: default # keep "default" if you want the resulting file to be saved next to "src_point_cloud" of preprocessing
+  output_type: txt # keep "default" if you want the resulting file to have the same extension as the input
   skip_to_step: 0
-  output_type: las  # choose between las, laz and txt
-  rounding_floor_flatten: 3
-  rounding_clean_final: 3
