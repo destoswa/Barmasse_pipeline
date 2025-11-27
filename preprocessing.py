@@ -4,7 +4,7 @@ import traceback
 import numpy as np
 import laspy
 from tqdm import tqdm
-from time import time
+from time import time, sleep
 from omegaconf import OmegaConf
 from format_conversions import convert_all_in_folder
 # from utils import *
@@ -36,7 +36,7 @@ def main(args):
     STRIPE_WIDTH = int(args.stripe_width)
     STRIPE_DIM = args.stripe_dim
     METHOD = args.method
-    METHOD_EPSILON = float(args.method_epsilon)
+    METHOD_EPSILON = None if args.method_epsilon == "None" else float(args.method_epsilon)
     OUTPUT_TYPE = args.output_type
     DO_SKIP_EXISTING_FLATTEN = args.do_skip_existing_flatten
     SKIP_TO_STEP = int(args.skip_to_step)
@@ -61,7 +61,6 @@ def main(args):
             src_input=SRC_INPUT, 
             src_target=src_folder_tiles_wo_overlap, 
             tile_size=TILE_SIZE,
-            n_processes=NUM_WORKERS,
             overlap=0)
     
     # 2 - splitting as tiles w overlap
@@ -71,7 +70,6 @@ def main(args):
             src_input=SRC_INPUT, 
             src_target=src_folder_tiles_w_overlap, 
             tile_size=TILE_SIZE,
-            n_processes=NUM_WORKERS,
             overlap=OVERLAP)
     
 	# 3 - flattening of tiles w overlap
@@ -222,6 +220,11 @@ def main(args):
 if __name__ == "__main__":
     conf = OmegaConf.load('configs.yaml')
 
+    # Save preprocessing conf
+    if conf.general.do_save_conf:
+        with open(os.path.join(os.path.dirname(conf.preprocessing.src_point_cloud), 'preprocessing_conf.yaml'), 'w') as f:
+            OmegaConf.save(conf.preprocessing, f.name)
+
     # Show configuration
     print(f"Preprocessing file: \n\t{conf.preprocessing.src_point_cloud} \nwith the following configuration:")
     for key, val in conf.preprocessing.items():
@@ -260,7 +263,9 @@ if __name__ == "__main__":
         print(f"\tThe precision detected and used is {precision} decimals. It is important that the " \
         'clean files given to postprocess have the same precision. ')
     
-    for i in range(3):
-        playsound('./robot.mp3')
+    if conf.general.sound_when_finish:
+        for i in range(3):
+            sleep(0.5)
+            playsound('./robot.mp3')
     
     input("Press enter to continue...")

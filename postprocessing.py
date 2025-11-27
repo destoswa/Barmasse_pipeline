@@ -3,10 +3,11 @@ import traceback
 import numpy as np
 import laspy
 from tqdm import tqdm
-from time import time
+from time import time, sleep
 from omegaconf import OmegaConf
 from format_conversions import convert_all_in_folder, convert_one_file
 from utils import add_matching_z, matching_mask, merge_laz
+from playsound import playsound
 
 def main(args):
     """
@@ -113,6 +114,11 @@ def main(args):
 if __name__ == "__main__":
     conf = OmegaConf.load('configs.yaml')
     
+    # Save postprocessing conf
+    if conf.general.do_save_conf:
+        with open(os.path.join(os.path.dirname(conf.preprocessing.src_point_cloud), 'postprocessing_conf.yaml'), 'w') as f:
+            OmegaConf.save(conf.postprocessing, f.name)
+
     # Set paths if defaults
     src_preprocess_dir = os.path.join(os.path.dirname(conf.preprocessing.src_point_cloud), 'preprocessing_files')
     if conf.postprocessing.src_clean_stripes == "default":
@@ -150,5 +156,10 @@ if __name__ == "__main__":
     min = int((delta_time_loop - 3600 * hours) // 60)
     sec = int(delta_time_loop - 3600 * hours - 60 * min)
     print(f"\n==== Postprocessing done in {hours}:{min}:{sec} ====\n")
+    
+    if conf.general.sound_when_finish:
+        for i in range(3):
+            sleep(0.5)
+            playsound('./robot.mp3')
 
     input("Press enter to continue...")

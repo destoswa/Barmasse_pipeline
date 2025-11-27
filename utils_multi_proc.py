@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import laspy
-from scipy.interpolate import griddata, RBFInterpolator
+from scipy.interpolate import griddata, RBFInterpolator, Rbf
 import copy
 from tqdm import tqdm
 from itertools import product
@@ -313,11 +313,24 @@ def flattening_tile(tile_src, tile_new_original_src, grid_size=10, method='cubic
         print(grid_used)
 
     # temp_time = time()
+    if epsilon is None:
+        # default epsilon is the "the average distance between nodes" based
+        # on a bounding hypercube
+        # print(arr_grid_min_pos.shape)
+        ximax = np.amax(arr_grid_min_pos, axis=0)
+        ximin = np.amin(arr_grid_min_pos, axis=0)
+        N = arr_grid_min_pos.shape[-1]
+        edges = ximax - ximin
+        edges = edges[np.nonzero(edges)]
+        epsilon = np.power(np.prod(edges)/N, 1.0/edges.size)
+        
     # Interpolate
     points_xy = np.array(points)[:,0:2]
     if method == 'cubic':
         interpolated_min_z = griddata(arr_grid_min_pos, np.array(lst_grid_min), points_xy, method="cubic")
     elif method == 'multiquadric':
+        # rbf = Rbf(arr_grid_min_pos[:,0], arr_grid_min_pos[:,1], np.array(lst_grid_min), function='multiquadric', smooth=5)
+        # interpolated_min_z = rbf(points_xy[:,0], points_xy[:,1])
         interpolated_min_z = RBFInterpolator(arr_grid_min_pos, np.array(lst_grid_min), kernel='multiquadric', epsilon=epsilon)(points_xy)
     elif method == 'invmultiquadric':
         interpolated_min_z = RBFInterpolator(arr_grid_min_pos, np.array(lst_grid_min), kernel='inverse_multiquadric', epsilon=epsilon)(points_xy)
@@ -362,6 +375,8 @@ def flattening_tile(tile_src, tile_new_original_src, grid_size=10, method='cubic
         print("Saved file: ", tile_new_original_src.split('.laz')[0] + "_flatten.laz")
     # print("Duration 4: ", time() - temp_time)
 
+    return epsilon
+
 
 def _flatten_tile_worker(args):
     """
@@ -381,7 +396,7 @@ def _flatten_tile_worker(args):
     if verbose_full:
         print(f"Flattening tile: {tile}")
 
-    flattening_tile(
+    epsilon_out = flattening_tile(
         tile_src=tile_src_path,
         tile_new_original_src=os.path.join(src_new_tiles, tile),
         grid_size=grid_size,
@@ -390,7 +405,7 @@ def _flatten_tile_worker(args):
         do_save_floor=do_save_floor,
         verbose=verbose_full,
     )
-    return tile  # optionally return tile processed
+    return epsilon_out  # optionally return tile processed
 
 
 def flattening(src_tiles, src_new_tiles, grid_size=10, method='cubic',
@@ -428,11 +443,15 @@ def flattening(src_tiles, src_new_tiles, grid_size=10, method='cubic',
                    for tile in list_tiles]
 
     # Use a pool
+    do_generate_custom_eps = epsilon == None
+    lst_cust_eps = []
     with Pool(processes=n_processes) as pool:
         # Using tqdm for progress bar
-        for _ in tqdm(pool.imap_unordered(_flatten_tile_worker, worker_args),
+        for eps_out in tqdm(pool.imap_unordered(_flatten_tile_worker, worker_args),
                       total=len(worker_args), desc="Processing", disable=not verbose):
-            pass
+            if do_generate_custom_eps:
+                lst_cust_eps.append(eps_out)
+    print("Epsilon was computed automatically with a mean value of ", np.round(np.mean(lst_cust_eps), 3))
         
 
 def merge_laz(list_files, output_file):

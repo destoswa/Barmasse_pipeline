@@ -1,3 +1,6 @@
+general:
+  do_save_conf: True
+  sound_when_finish: True
 preprocessing:
   src_point_cloud: D:\GitHubProjects\Terranum_repo\Barmasse_pipeline\data\gridsearch\data\Barmasse_2025_AllScans_Raw_Sub2cm.laz
   tile_size:  100
@@ -6,10 +9,10 @@ preprocessing:
   stripe_width: 20
   stripe_dim: x
   method: invmultiquadric
-  method_epsilon: 0.2
+  method_epsilon: None
   output_type: laz  # choose between las, laz and txt
   do_skip_existing_flatten: False
-  skip_to_step: 0
+  skip_to_step: 3
   num_workers: 6
 postprocessing:
   src_clean_stripes: default # keep "default" if you didn't saved the clean stripes over the flatten stripes
