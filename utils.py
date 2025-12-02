@@ -1,11 +1,14 @@
 import os
 import numpy as np
 import laspy
-from scipy.interpolate import griddata, RBFInterpolator
+from scipy.interpolate import griddata, RBFInterpolator, Rbf
 import copy
 from tqdm import tqdm
 from itertools import product
-from time import time
+from multiprocessing import Pool, cpu_count
+from itertools import product
+from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
 
 
 def tilling(src_input, src_target, tile_size, overlap=0, shift=0, verbose=True):
@@ -117,73 +120,6 @@ def stripes_file(src_input_file, src_output, dims, verbose=True):
             f"{os.path.splitext(os.path.basename(src_input_file))[0]}_stripe_{id_stripe - num_skipped}.laz"
         )
         tile.write(tile_filename)
-
-
-def remove_duplicates(laz_file, decimals=2):
-    """
-    Removes duplicate points from a LAS/LAZ file based on rounded 3D coordinates.
-
-    Args:
-        - laz_file (laspy.LasData): Input LAS/LAZ file as a laspy object.
-        - decimals (int, optional): Number of decimals to round the coordinates for duplicate detection. Defaults to 2.
-
-    Returns:
-        - laspy.LasData: A new laspy object with duplicate points removed.
-    """
-        
-    coords = np.round(np.vstack((laz_file.x, laz_file.y, laz_file.z)).T, decimals)
-    _, unique_indices = np.unique(coords, axis=0, return_index=True)
-    mask = np.zeros(len(coords), dtype=bool)
-    mask[unique_indices] = True
-
-    # Create new LAS object
-    header = laspy.LasHeader(point_format=laz_file.header.point_format, version=laz_file.header.version)
-    new_las = laspy.LasData(header)
-
-    for dim in laz_file.point_format.dimension_names:
-        setattr(new_las, dim, getattr(laz_file, dim)[mask])
-
-    return new_las
-
-
-def match_pointclouds(laz1, laz2):
-    """Sort laz2 to match the order of laz1 without changing laz1's order.
-
-    Args:
-        laz1: laspy.LasData object (reference order)
-        laz2: laspy.LasData object (to be sorted)
-    
-    Returns:
-        laz2 sorted to match laz1
-    """
-    # Retrieve and round coordinates for robust matching
-    coords_1 = np.round(np.vstack((laz1.x, laz1.y, laz1.z)), 2).T
-    coords_2 = np.round(np.vstack((laz2.x, laz2.y, laz2.z)), 2).T
-
-    # Verify laz2 is of the same size as laz1
-    assert len(coords_2) == len(coords_1), "laz2 should be a subset of laz1"
-
-    # Create a dictionary mapping from coordinates to indices
-    coord_to_idx = {tuple(coord): idx for idx, coord in enumerate(coords_1)}
-
-    # Find indices in laz1 that correspond to laz2
-    matching_indices = []
-    failed = 0
-    for coord in coords_2:
-        try:
-            matching_indices.append(coord_to_idx[tuple(coord)])
-        except Exception as e:
-            failed += 1
-
-    matching_indices = np.array([coord_to_idx[tuple(coord)] for coord in coords_2])
-
-    # Sort laz2 to match laz1
-    sorted_indices = np.argsort(matching_indices)
-
-    # Apply sorting to all attributes of laz2
-    laz2.points = laz2.points[sorted_indices]
-
-    return laz2  # Now sorted to match laz1
 
 
 def flattening_tile(tile_src, tile_new_original_src, grid_size=10, method='cubic', epsilon=0.2, do_save_floor=False, do_keep_existing=False, verbose=True):
@@ -302,11 +238,22 @@ def flattening_tile(tile_src, tile_new_original_src, grid_size=10, method='cubic
         print(grid_used)
 
     # temp_time = time()
+    if epsilon is None:
+        # default epsilon is the "the average distance between nodes" based on a bounding hypercube
+        ximax = np.amax(arr_grid_min_pos, axis=0)
+        ximin = np.amin(arr_grid_min_pos, axis=0)
+        N = arr_grid_min_pos.shape[-1]
+        edges = ximax - ximin
+        edges = edges[np.nonzero(edges)]
+        epsilon = np.power(np.prod(edges)/N, 1.0/edges.size)
+        
     # Interpolate
     points_xy = np.array(points)[:,0:2]
     if method == 'cubic':
         interpolated_min_z = griddata(arr_grid_min_pos, np.array(lst_grid_min), points_xy, method="cubic")
     elif method == 'multiquadric':
+        # rbf = Rbf(arr_grid_min_pos[:,0], arr_grid_min_pos[:,1], np.array(lst_grid_min), function='multiquadric', smooth=5)
+        # interpolated_min_z = rbf(points_xy[:,0], points_xy[:,1])
         interpolated_min_z = RBFInterpolator(arr_grid_min_pos, np.array(lst_grid_min), kernel='multiquadric', epsilon=epsilon)(points_xy)
     elif method == 'invmultiquadric':
         interpolated_min_z = RBFInterpolator(arr_grid_min_pos, np.array(lst_grid_min), kernel='inverse_multiquadric', epsilon=epsilon)(points_xy)
@@ -351,8 +298,42 @@ def flattening_tile(tile_src, tile_new_original_src, grid_size=10, method='cubic
         print("Saved file: ", tile_new_original_src.split('.laz')[0] + "_flatten.laz")
     # print("Duration 4: ", time() - temp_time)
 
+    return epsilon
 
-def flattening(src_tiles, src_new_tiles, grid_size=10, verbose=True, method='cubic', epsilon=0.2, do_save_floor=True, do_skip_existing=False, verbose_full=False):
+
+def _flatten_tile_worker(args):
+    """
+    Worker function for processing a single tile in parallel.
+    """
+    tile, src_tiles, src_new_tiles, grid_size, method, epsilon, do_save_floor, do_skip_existing, verbose_full = args
+
+    tile_src_path = os.path.join(src_tiles, tile)
+    tile_new_path = os.path.join(src_new_tiles, tile).split('.laz')[0] + "_flatten.laz"
+
+    # Skip existing if needed
+    if do_skip_existing and os.path.exists(tile_new_path):
+        if verbose_full:
+            print(f"Skipping {tile} (already exists)")
+        return tile  # can return skipped tile info
+
+    if verbose_full:
+        print(f"Flattening tile: {tile}")
+
+    epsilon_out = flattening_tile(
+        tile_src=tile_src_path,
+        tile_new_original_src=os.path.join(src_new_tiles, tile),
+        grid_size=grid_size,
+        method=method,
+        epsilon=epsilon,
+        do_save_floor=do_save_floor,
+        verbose=verbose_full,
+    )
+    return epsilon_out  # optionally return tile processed
+
+
+def flattening(src_tiles, src_new_tiles, grid_size=10, method='cubic',
+                        epsilon=0.2, do_save_floor=True, do_skip_existing=False, 
+                        use_multiprocessing=False, n_processes=None, verbose=True, verbose_full=False):
     """
     Applies the flattening process to all tiles in a directory using grid-based ground surface estimation.
 
@@ -369,28 +350,57 @@ def flattening(src_tiles, src_new_tiles, grid_size=10, verbose=True, method='cub
 
     os.makedirs(src_new_tiles, exist_ok=True)
 
+    """
+    Flatten all tiles in parallel using multiprocessing.
+    """
+    os.makedirs(src_new_tiles, exist_ok=True)
+
     list_tiles = [x for x in os.listdir(src_tiles) if x.endswith('.laz')]
-    for _, tile in tqdm(enumerate(list_tiles), total=len(list_tiles), desc="Processing", disable=verbose==False):
-        if verbose_full:
-            print("Flattening tile: ", tile)
 
-        if do_skip_existing == True and os.path.exists(os.path.join(src_new_tiles, tile).split('.laz')[0] + "_flatten.laz"):
+    do_generate_custom_eps = epsilon == None
+    lst_cust_eps = []
+
+    if use_multiprocessing:
+        if n_processes is None:
+            n_processes = max(1, cpu_count() - 1)  # leave one CPU free
+
+        # Prepare args for each worker
+        worker_args = [(tile, src_tiles, src_new_tiles, grid_size, method, epsilon,
+                        do_save_floor, do_skip_existing, verbose_full)
+                    for tile in list_tiles]
+
+        # Use a pool
+        with Pool(processes=n_processes) as pool:
+            # Using tqdm for progress bar
+            for eps_out in tqdm(pool.imap_unordered(_flatten_tile_worker, worker_args),
+                        total=len(worker_args), desc="Processing", disable=not verbose):
+                lst_cust_eps.append(eps_out)
+    else:
+        for _, tile in tqdm(enumerate(list_tiles), total=len(list_tiles), desc="Processing", disable=verbose==False):
             if verbose_full:
-                print(f"Skipping. {tile} exists already")
-            continue
+                print("Flattening tile: ", tile)
 
-        flattening_tile(
-            tile_src=os.path.join(src_tiles, tile), 
-            tile_new_original_src=os.path.join(src_new_tiles, tile),
-            grid_size=grid_size,
-            method=method, 
-            epsilon=epsilon,
-            do_save_floor=do_save_floor,
-            verbose=verbose_full,
-            )
+            if do_skip_existing == True and os.path.exists(os.path.join(src_new_tiles, tile).split('.laz')[0] + "_flatten.laz"):
+                if verbose_full:
+                    print(f"Skipping. {tile} exists already")
+                continue
+
+            eps_out = flattening_tile(
+                tile_src=os.path.join(src_tiles, tile), 
+                tile_new_original_src=os.path.join(src_new_tiles, tile),
+                grid_size=grid_size,
+                method=method, 
+                epsilon=epsilon,
+                do_save_floor=do_save_floor,
+                verbose=verbose_full,
+                )
+            lst_cust_eps.append(eps_out)
+    
+    if do_generate_custom_eps:
+        print("\t- Epsilon was computed automatically with a mean value of ", np.round(np.mean(lst_cust_eps), 3))
         
 
-def merge_laz(list_files, output_file):
+def merge_laz(list_files, output_file, verbose=False):
     # Load first file (keeps header intact)
     out = None
 
@@ -414,10 +424,11 @@ def merge_laz(list_files, output_file):
 
     out.header.min = [float(xs.min()), float(ys.min()), float(zs.min())]
     out.header.max = [float(xs.max()), float(ys.max()), float(zs.max())]
-
+    
     # Save
     out.write(output_file)
-    print(f"Merged {len(list_files)} files → {output_file}")
+    if verbose:
+        print(f"Merged {len(list_files)} files → {output_file}")
 
 
 def hash_coords(x, y, z, rounding=3):

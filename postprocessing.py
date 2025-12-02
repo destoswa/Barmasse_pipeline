@@ -116,7 +116,9 @@ if __name__ == "__main__":
     
     # Save postprocessing conf
     if conf.general.do_save_conf:
-        with open(os.path.join(os.path.dirname(conf.preprocessing.src_point_cloud), 'postprocessing_conf.yaml'), 'w') as f:
+        src_confs = os.path.join(os.path.dirname(conf.preprocessing.src_point_cloud), 'confs')
+        os.makedirs(src_confs, exist_ok=True)
+        with open(os.path.join(src_confs, 'postprocessing_conf.yaml'), 'w') as f:
             OmegaConf.save(conf.postprocessing, f.name)
 
     # Set paths if defaults
@@ -160,6 +162,6 @@ if __name__ == "__main__":
     if conf.general.sound_when_finish:
         for i in range(3):
             sleep(0.5)
-            playsound('./robot.mp3')
+            playsound('./alarm.mp3')
 
     input("Press enter to continue...")

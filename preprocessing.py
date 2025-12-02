@@ -7,8 +7,7 @@ from tqdm import tqdm
 from time import time, sleep
 from omegaconf import OmegaConf
 from format_conversions import convert_all_in_folder
-# from utils import *
-from utils_multi_proc import *
+from utils import tilling, stripes_file, flattening, merge_laz, hash_coords
 from playsound import playsound
 
 
@@ -37,6 +36,7 @@ def main(args):
     STRIPE_DIM = args.stripe_dim
     METHOD = args.method
     METHOD_EPSILON = None if args.method_epsilon == "None" else float(args.method_epsilon)
+    USE_MULTIPROCESSING = args.use_multiprocessing
     OUTPUT_TYPE = args.output_type
     DO_SKIP_EXISTING_FLATTEN = args.do_skip_existing_flatten
     SKIP_TO_STEP = int(args.skip_to_step)
@@ -75,7 +75,6 @@ def main(args):
 	# 3 - flattening of tiles w overlap
     if SKIP_TO_STEP <= 3:
         print("\n---\n\nStep 3/11 - Flattening of tiles")
-        temp_time = time()
         flattening(
             src_tiles=src_folder_tiles_w_overlap,
             src_new_tiles=src_folder_flatten_tiles,
@@ -84,10 +83,10 @@ def main(args):
             epsilon=METHOD_EPSILON,
             do_skip_existing=DO_SKIP_EXISTING_FLATTEN,
             n_processes=NUM_WORKERS,
+            use_multiprocessing=USE_MULTIPROCESSING,
             verbose=True,
             verbose_full=False,
         )
-        print(f"Time to flatten = ", time() - temp_time)
 	
     # 4 - creation of flatten tiles wo overlap
     if SKIP_TO_STEP <= 4:
@@ -222,7 +221,9 @@ if __name__ == "__main__":
 
     # Save preprocessing conf
     if conf.general.do_save_conf:
-        with open(os.path.join(os.path.dirname(conf.preprocessing.src_point_cloud), 'preprocessing_conf.yaml'), 'w') as f:
+        src_confs = os.path.join(os.path.dirname(conf.preprocessing.src_point_cloud), 'confs')
+        os.makedirs(src_confs, exist_ok=True)
+        with open(os.path.join(src_confs, 'preprocessing_conf.yaml'), 'w') as f:
             OmegaConf.save(conf.preprocessing, f.name)
 
     # Show configuration
@@ -263,9 +264,9 @@ if __name__ == "__main__":
         print(f"\tThe precision detected and used is {precision} decimals. It is important that the " \
         'clean files given to postprocess have the same precision. ')
     
-    if conf.general.sound_when_finish:
+    if conf.general.sound_when_finish and os.path.exists("./alarm.mp3"):
         for i in range(3):
             sleep(0.5)
-            playsound('./robot.mp3')
+            playsound('./alarm.mp3')
     
     input("Press enter to continue...")
