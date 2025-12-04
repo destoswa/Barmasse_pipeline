@@ -35,7 +35,7 @@ def main(args):
     STRIPE_WIDTH = int(args.stripe_width)
     STRIPE_DIM = args.stripe_dim
     METHOD = args.method
-    METHOD_EPSILON = None if args.method_epsilon == "None" else float(args.method_epsilon)
+    METHOD_EPSILON = "auto" if args.method_epsilon == "auto" else float(args.method_epsilon)
     USE_MULTIPROCESSING = args.use_multiprocessing
     OUTPUT_TYPE = args.output_type
     DO_SKIP_EXISTING_FLATTEN = args.do_skip_existing_flatten
@@ -195,7 +195,7 @@ def main(args):
 
         stripes_file(SRC_INPUT, src_folder_stripes_original, dims)
 
-    # 11 - striping of big original
+    # 11 - preparation of stripes for manual cleaning (in folder 'to_process')
     if SKIP_TO_STEP <= 11:
         print("---\nStep 11/11 - Preparation of stripes for manual cleaning (in folder 'to_process'):")
         # Save offset if txt (processing pc with Polyworks)

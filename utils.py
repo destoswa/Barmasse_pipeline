@@ -1,7 +1,9 @@
 import os
 import numpy as np
 import laspy
+import shutil
 from scipy.interpolate import griddata, RBFInterpolator, Rbf
+from sklearn.neighbors import NearestNeighbors 
 import copy
 from tqdm import tqdm
 from itertools import product
@@ -15,6 +17,8 @@ def tilling(src_input, src_target, tile_size, overlap=0, shift=0, verbose=True):
     """
     Crops a LAS/LAZ file into tiles using laspy directly (preserves id_point and coordinates).
     """
+    if os.path.exists(src_target):
+        shutil.rmtree(src_target)
     os.makedirs(src_target, exist_ok=True)
 
     las = laspy.read(src_input)
@@ -72,9 +76,12 @@ def stripes_file(src_input_file, src_output, dims, verbose=True):
     """
     Crops a LAS/LAZ file into tiles using laspy directly (preserves id_point and coordinates).
     """
+    if os.path.exists(src_output):
+        shutil.rmtree(src_output)
+    os.makedirs(src_output, exist_ok=True)
+    
     [tile_size_x, tile_size_y] = dims
     las = laspy.read(src_input_file)
-    os.makedirs(src_output, exist_ok=True)
 
     xmin, xmax, ymin, ymax = las.x.min(), las.x.max(), las.y.min(), las.y.max()
 
@@ -238,14 +245,22 @@ def flattening_tile(tile_src, tile_new_original_src, grid_size=10, method='cubic
         print(grid_used)
 
     # temp_time = time()
-    if epsilon is None:
-        # default epsilon is the "the average distance between nodes" based on a bounding hypercube
-        ximax = np.amax(arr_grid_min_pos, axis=0)
-        ximin = np.amin(arr_grid_min_pos, axis=0)
-        N = arr_grid_min_pos.shape[-1]
-        edges = ximax - ximin
-        edges = edges[np.nonzero(edges)]
-        epsilon = np.power(np.prod(edges)/N, 1.0/edges.size)
+    if epsilon is 'auto':
+        if method == 'multiquadric':
+            # default epsilon is the "the average distance between nodes" based on a bounding hypercube
+            ximax = np.amax(arr_grid_min_pos, axis=0)
+            ximin = np.amin(arr_grid_min_pos, axis=0)
+            N = arr_grid_min_pos.shape[-1]
+            edges = ximax - ximin
+            edges = edges[np.nonzero(edges)]
+            epsilon = np.power(np.prod(edges)/N, 1.0/edges.size)
+        elif method == 'invmultiquadric':
+            nbrs = NearestNeighbors(n_neighbors=2).fit(points)
+            distances, _ = nbrs.kneighbors(points)
+            d = np.median(distances[:, 1])  # median NN distance
+            epsilon = 1.0 / d
+        else:
+            pass
         
     # Interpolate
     points_xy = np.array(points)[:,0:2]
@@ -396,7 +411,7 @@ def flattening(src_tiles, src_new_tiles, grid_size=10, method='cubic',
                 )
             lst_cust_eps.append(eps_out)
     
-    if do_generate_custom_eps:
+    if do_generate_custom_eps and len(lst_cust_eps) > 0:
         print("\t- Epsilon was computed automatically with a mean value of ", np.round(np.mean(lst_cust_eps), 3))
         
 

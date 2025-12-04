@@ -84,9 +84,9 @@ def main(args):
 
             list_stripes_to_merge.append(src_result_clean_stripe)
 
-    # Step 2/3 - merging all flatten tiles together (might take a few minutes)
+    # Step 2/3 - merging all flatten tiles together
     if SKIP_TO_STEP <= 2:
-        print("\n---\n\nStep 2/3 - Merging all flatten tsiles together")
+        print("\n---\n\nStep 2/3 - Merging all flatten tiles together")
         merge_laz(list_stripes_to_merge, src_merged_results)
 
     # Step 3/3 - filtering out the original file
